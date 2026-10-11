@@ -1,0 +1,58 @@
+# Imagen de prod: build estático servido por nginx (puerto 8080, /health propio).
+# Nota: al ser nginx estático, "hey" contra el frontend casi no mueve el gráfico
+# de CPU -- para la demo de carga, seguí apuntando al backend (puerto 3000).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: frontend
+    namespace: alentapp
+    labels: { app: frontend, tier: frontend }
+spec:
+    replicas: 2
+    selector: { matchLabels: { app: frontend } }
+    template:
+        metadata: { labels: { app: frontend, tier: frontend } }
+        spec:
+            containers:
+                - name: frontend
+                  image: alentapp-frontend:prod
+                  imagePullPolicy: IfNotPresent
+                  ports: [{ containerPort: 8080, name: http }]
+                  readinessProbe:
+                      httpGet: { path: /health, port: 8080 }
+                      initialDelaySeconds: 3
+                      periodSeconds: 5
+                  resources:
+                      requests: { cpu: 50m, memory: 64Mi }
+                      limits: { cpu: 300m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: frontend
+    namespace: alentapp
+spec:
+    type: NodePort
+    selector: { app: frontend }
+    ports:
+        - port: 8080
+          targetPort: 8080
+          nodePort: 30081
+---
+# Opcional: solo si quieren mostrar escalado real del frontend bajo carga.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+    name: frontend
+    namespace: alentapp
+spec:
+    scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: frontend }
+    minReplicas: 2
+    maxReplicas: 8
+    metrics:
+        - type: Resource
+          resource:
+              {
+                  name: cpu,
+                  target: { type: Utilization, averageUtilization: 50 },
+              }

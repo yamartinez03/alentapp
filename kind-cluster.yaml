@@ -1,0 +1,9 @@
+# Cluster local de 3 nodos para las demos de Lens (Grupo 7)
+# Uso: kind create cluster --config kind-cluster.yaml --name lens-demo
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: lens-demo
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: db-data
+    namespace: alentapp
+spec:
+    accessModes: ['ReadWriteOnce']
+    resources:
+        requests:
+            storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: db
+    namespace: alentapp
+    labels: { app: db, tier: database }
+spec:
+    replicas: 1
+    selector: { matchLabels: { app: db } }
+    template:
+        metadata: { labels: { app: db, tier: database } }
+        spec:
+            # Fija "db" al nodo control-plane a propósito: ese nodo nunca se
+            # cordonea/drena en la demo (solo tocamos worker/worker2), así que el
+            # volumen local del PVC siempre queda disponible ahí.
+            nodeSelector:
+                node-role.kubernetes.io/control-plane: ''
+            tolerations:
+                - key: node-role.kubernetes.io/control-plane
+                  operator: Exists
+                  effect: NoSchedule
+            containers:
+                - name: postgres
+                  image: postgres:16-alpine
+                  env:
+                      - name: POSTGRES_USER
+                        value: admin
+                      - name: POSTGRES_PASSWORD
+                        value: password123
+                      - name: POSTGRES_DB
+                        value: alentapp_db
+                      # Subcarpeta propia, no la raíz del volumen: evita el típico error
+                      # de Postgres "data directory has wrong ownership / not empty"
+                      # cuando el volumen ya trae una carpeta lost+found adentro.
+                      - name: PGDATA
+                        value: /var/lib/postgresql/data/pgdata
+                  ports: [{ containerPort: 5432 }]
+                  volumeMounts:
+                      - name: data
+                        mountPath: /var/lib/postgresql/data
+                  readinessProbe:
+                      exec:
+                          {
+                              command:
+                                  [
+                                      'pg_isready',
+                                      '-U',
+                                      'admin',
+                                      '-d',
+                                      'alentapp_db',
+                                  ],
+                          }
+                      initialDelaySeconds: 5
+                      periodSeconds: 5
+                  resources:
+                      requests: { cpu: 100m, memory: 128Mi }
+                      limits: { cpu: 500m, memory: 256Mi }
+            volumes:
+                - name: data
+                  persistentVolumeClaim:
+                      claimName: db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: db
+    namespace: alentapp
+spec:
+    selector: { app: db }
+    ports:
+        - port: 5432
+          targetPort: 5432

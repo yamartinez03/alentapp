@@ -25,6 +25,7 @@ RUN npm install
 COPY . .
 
 RUN npm run build --workspace=@alentapp/shared
+RUN npx prisma generate --schema=packages/api/prisma/schema.prisma
 RUN npm run build --workspace=@alentapp/api
 
 
